@@ -10,7 +10,7 @@
                 <block title="Optimización Base de Datos (Technical)" name="db_optimization_setting_container" groups="base.group_system">
                     
                     <!-- Configuración Global -->
-                    <setting string="Configuración Global" help="Define si los índices creados por este módulo deben permanecer en la base de datos PostgreSQL de forma permanente.">
+                    <setting string="Configuración Global" help="Define si los índices deben persistir tras la desinstalación.">
                         <field name="keep_indices_on_uninstall"/>
                         <span class="o_form_label">Mantener índices tras desinstalar el módulo</span>
                     </setting>
@@ -34,9 +34,12 @@
                         </div>
                     </setting>
 
-                    <!-- Terminal de Logs (Novedad) -->
-                    <setting string="Monitor de Estado (Tiempo Real)" help="Visualiza el progreso de las tareas de indexado.">
-                        <div class="mt-3 p-3 bg-dark text-white rounded font-monospace" style="min-height: 200px; max-height: 300px; overflow-y: auto; font-size: 11px; border: 2px solid #333;">
+                    <!-- Terminal de Logs -->
+                    <setting string="Monitor de Estado" help="Progreso en tiempo real de las tareas de indexado.">
+                        <div class="w-100 mt-2">
+                             <button name="action_refresh_optimization_logs" string="Actualizar Monitor" type="object" class="btn btn-link btn-sm p-0 mb-2" icon="fa-refresh"/>
+                        </div>
+                        <div class="mt-1 p-3 bg-dark text-white rounded font-monospace" style="min-height: 200px; max-height: 350px; overflow-y: auto; font-size: 11px; border: 2px solid #333;">
                             <field name="optimization_log_ids" nolabel="1" readonly="1">
                                 <list no_open="1" create="0" delete="0" edit="0" decoration-success="type == 'success'" decoration-info="type == 'info'" decoration-danger="type == 'error'" decoration-warning="type == 'warning'">
                                     <field name="create_date" string="Hora" widget="datetime" options="{'format': 'HH:mm:ss'}"/>
@@ -44,17 +47,14 @@
                                     <field name="type" column_invisible="True"/>
                                 </list>
                             </field>
-                            <div class="mt-2 text-center text-muted small" invisible="optimization_log_ids">
-                                --- No hay logs recientes. Pulsa un botón para iniciar ---
-                            </div>
                         </div>
                     </setting>
 
                     <!-- Botones de Acción -->
-                    <setting string="Acciones Inmediatas" help="Lanzan las tareas que verás arriba en tiempo real.">
+                    <setting string="Acciones Inmediatas" help="Lanzan las tareas en segundo plano.">
                         <div class="mt16">
                             <button name="action_apply_db_optimizations" string="Lanzar Mantenimiento" type="object" class="btn-primary me-2" icon="fa-play"/>
-                            <button name="action_reindex_db_tables" string="Forzar Reindexado (Pesado)" type="object" class="btn-secondary" icon="fa-refresh" confirm="Esta operación reconstruye los índices. Consulta el terminal arriba para ver el progreso. ¿Deseas continuar?"/>
+                            <button name="action_reindex_db_tables" string="Forzar Reindexado (Pesado)" type="object" class="btn-secondary" icon="fa-refresh" confirm="Esta operación se ejecutará en segundo plano. Pulsa 'Actualizar Monitor' para ver el avance."/>
                         </div>
                     </setting>
 

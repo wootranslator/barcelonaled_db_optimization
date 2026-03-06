@@ -1,25 +1,18 @@
 import logging
 import time
-from odoo import models, api, fields
+import threading
+from odoo import models, api, fields, registry
 
 _logger = logging.getLogger(__name__)
 
-class DbOptimization(models.Model):
-    _name = 'db.optimization'
-    _description = 'Mantenimiento de Optimización de DB'
+def run_optimization_in_thread(db_name, force_reindex, user_id):
+    """Función para ejecutar la optimización en un hilo secundario con su propia conexión"""
+    with registry(db_name).cursor() as cr:
+        env = api.Environment(cr, user_id, {})
+        log_model = env['db.optimization.log']
+        get_param = env['ir.config_parameter'].sudo().get_param
 
-    @api.model
-    def _db_optimization_maintenance(self, force_reindex=False):
-        """
-        Método central para gestionar la creación, eliminación y mantenimiento de los índices.
-        Organizado por Apps de Odoo.
-        """
-        get_param = self.env['ir.config_parameter'].sudo().get_param
-        # Usamos un cursor nuevo para los logs para que no afecten a la transacción principal
-        # y así poder guardar el estado incluso si hay fallos.
-        log_model = self.env['db.optimization.log']
-
-        # Mapeo de grupos a queries e índices
+        # 1. Definir los grupos (idéntico al anterior)
         optimization_groups = {
             'stock': {
                 'label': 'Inventario',
@@ -70,66 +63,67 @@ class DbOptimization(models.Model):
             }
         }
 
-        # Limpiar logs anteriores
+        # 2. Limpiar logs y empezar
         log_model.sudo().search([]).unlink()
+        cr.commit()
         
-        # IMPORTANTE: Liberar la transacción actual. 
-        # CREATE INDEX CONCURRENTLY no puede ejecutarse dentro de un bloque BEGIN/COMMIT.
-        self.env.cr.commit()
-
-        if force_reindex:
-            log_model.add_log("🚀 Iniciando REINDEX CONCURRENTLY general...", 'info')
+        mode_str = "REINDEX" if force_reindex else "MANTENIMIENTO"
+        log_model.add_log(f"🚀 Iniciando {mode_str} en segundo plano...", 'info')
+        cr.commit()
 
         total_indexes = sum(len(g['indexes']) for g in optimization_groups.values() if g['enabled'])
-        current_index = 0
+        current_idx = 0
 
         for group_name, data in optimization_groups.items():
             if data['enabled']:
-                log_model.add_log(f"📦 Procesando grupo: {data['label']}", 'info')
+                log_model.add_log(f"📦 Grupo: {data['label']}", 'info')
+                cr.commit()
                 for table, index_name, definition in data['indexes']:
-                    current_index += 1
+                    current_idx += 1
                     try:
-                        # 1. Asegurar índice (CONCURRENTLY requiere estar fuera de transacción)
+                        # Asegurar índice
                         query = f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {index_name} ON {table} {definition};"
-                        _logger.info(f"DB OPT: Ejecutando {query}")
-                        self.env.cr.execute(query)
-                        # Commit inmediato para liberar el lock y confirmar la creación
-                        self.env.cr.commit()
+                        cr.execute(query)
+                        cr.commit()
                         
                         if force_reindex:
-                            msg = f"🔄 [{current_index}/{total_indexes}] Reindexando {index_name}..."
-                            log_model.add_log(msg, 'info')
+                            log_model.add_log(f"🔄 [{current_idx}/{total_indexes}] Reindexando {index_name}...", 'info')
+                            cr.commit()
                             start_time = time.time()
-                            
-                            self.env.cr.execute(f"REINDEX INDEX CONCURRENTLY {index_name};")
-                            self.env.cr.commit()
-                            
+                            cr.execute(f"REINDEX INDEX CONCURRENTLY {index_name};")
+                            cr.commit()
                             duration = round(time.time() - start_time, 2)
-                            log_model.add_log(f"✅ {index_name} finalizado en {duration}s", 'success')
+                            log_model.add_log(f"✅ {index_name} listo ({duration}s)", 'success')
+                            cr.commit()
                         else:
-                            log_model.add_log(f"✓ Índice {index_name} verificado/creado", 'info')
-                            
+                            log_model.add_log(f"✓ {index_name} verificado", 'info')
+                            cr.commit()
+
                     except Exception as e:
-                        # Si algo falla, el cursor queda en estado "Aborted", hay que hacer rollback para poder seguir
-                        self.env.cr.rollback()
-                        err_msg = f"❌ Error en {index_name}: {str(e)}"
-                        _logger.warning(f"DB OPT: {err_msg}")
-                        # Intentar loguear el error (ahora que el cursor está limpio tras el rollback)
-                        try:
-                            log_model.add_log(err_msg, 'error')
-                        except:
-                            pass
+                        cr.rollback()
+                        log_model.add_log(f"❌ Error en {index_name}: {str(e)}", 'error')
+                        cr.commit()
             else:
+                # Borrar si está desactivado
                 for table, index_name, definition in data['indexes']:
                     try:
-                        self.env.cr.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {index_name};")
-                        self.env.cr.commit()
+                        cr.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {index_name};")
+                        cr.commit()
                     except:
-                        self.env.cr.rollback()
+                        cr.rollback()
 
-        if force_reindex:
-            log_model.add_log("🏁 Tarea de mantenimiento finalizada satisfactoriamente.", 'success')
+        log_model.add_log("🏁 Tarea finalizada.", 'success')
+        cr.commit()
 
+class DbOptimization(models.Model):
+    _name = 'db.optimization'
+    _description = 'Mantenimiento de Optimización de DB'
+
+    @api.model
+    def _db_optimization_maintenance(self, force_reindex=False):
+        """Lanza el hilo de optimización para no bloquear la UI y permitir CONCURRENTLY"""
+        thread = threading.Thread(target=run_optimization_in_thread, args=(self.env.cr.dbname, force_reindex, self.env.uid))
+        thread.start()
         return True
 
 class DbOptimizationLog(models.Model):
@@ -147,6 +141,4 @@ class DbOptimizationLog(models.Model):
     
     @api.model
     def add_log(self, message, log_type='info'):
-        # Forzamos una transacción independiente para cada log para que sea visible en tiempo real
         self.create({'message': message, 'type': log_type})
-        self.env.cr.commit()

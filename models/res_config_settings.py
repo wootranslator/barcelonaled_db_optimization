@@ -55,7 +55,8 @@ class ResConfigSettings(models.TransientModel):
     )
 
     def _compute_log_ids(self):
-        logs = self.env['db.optimization.log'].search([], limit=10, order='id desc')
+        # Buscamos los últimos 50 logs para dar más contexto
+        logs = self.env['db.optimization.log'].search([], limit=50, order='id desc')
         for record in self:
             record.optimization_log_ids = logs
 
@@ -63,35 +64,38 @@ class ResConfigSettings(models.TransientModel):
     def _compute_optimization_cron_id(self):
         cron = self.env.ref('barcelonaled_db_optimization.ir_cron_db_optimization_maintenance', raise_if_not_found=False)
         if not cron:
-            # Fallback searching by name if the XML ID is lost or not yet created
             cron = self.env['ir.cron'].sudo().search([('name', '=', 'DB Optimization: Mantenimiento de Índices')], limit=1)
         for record in self:
             record.optimization_cron_id = cron
 
     def action_apply_db_optimizations(self):
-        """Ejecución manual para aplicar los índices seleccionados con mensaje de confirmación"""
+        """Ejecución en segundo plano"""
         self.env['db.optimization']._db_optimization_maintenance()
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
             'params': {
-                'title': 'Optimización Completada',
-                'message': 'Se han procesado los índices correctamente. Revisa el terminal de logs.',
-                'type': 'success',
+                'title': 'Proceso Iniciado',
+                'message': 'La optimización se está ejecutando en segundo plano. Pulsa "Actualizar Monitor" para ver el progreso.',
+                'type': 'info',
                 'sticky': False,
             }
         }
 
     def action_reindex_db_tables(self):
-        """Ejecución manual de REINDEX CONCURRENTLY en las tablas afectadas con mensaje de confirmación"""
+        """Ejecución en segundo plano de reindexado"""
         self.env['db.optimization']._db_optimization_maintenance(force_reindex=True)
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
             'params': {
-                'title': 'Reindexado Finalizado',
-                'message': 'La reconstrucción de índices ha finalizado. Consulta los logs para detalles de tiempo.',
-                'type': 'success',
-                'sticky': True,
+                'title': 'Reindexado Iniciado',
+                'message': 'La reconstrucción de índices ha comenzado en segundo plano (operación lenta).',
+                'type': 'warning',
+                'sticky': False,
             }
         }
+
+    def action_refresh_optimization_logs(self):
+        """Simplemente refresca la vista para ver los nuevos logs"""
+        return True
