@@ -7,17 +7,15 @@ _logger = logging.getLogger(__name__)
 
 def run_optimization_in_thread(db_name, force_reindex, user_id):
     """Función para ejecutar la optimización en un hilo secundario con su propia conexión y autocommit"""
-    # Usar un nuevo cursor y ponerlo en modo autocommit para permitir CONCURRENTLY
     with registry(db_name).cursor() as cr:
         try:
-            # Ponemos la conexión en autocommit para permitir CREATE INDEX CONCURRENTLY
+            # Forzamos autocommit para permitir CONCURRENTLY
             cr._obj.connection.autocommit = True
             
             env = api.Environment(cr, user_id, {})
             log_model = env['db.optimization.log']
             get_param = env['ir.config_parameter'].sudo().get_param
 
-            # 1. Definir los grupos
             optimization_groups = {
                 'stock': {
                     'label': 'Inventario',
@@ -68,11 +66,11 @@ def run_optimization_in_thread(db_name, force_reindex, user_id):
                 }
             }
 
-            # 2. Limpiar logs y empezar
+            # Limpiar e iniciar
             log_model.sudo().search([]).unlink()
             
             mode_str = "REINDEX" if force_reindex else "MANTENIMIENTO"
-            log_model.add_log(f"🚀 Iniciando {mode_str} en segundo plano (Autocommit ON)...", 'info')
+            log_model.add_log(f"🚀 Iniciando {mode_str} (Autocommit Mode)...", 'info')
 
             total_indexes = sum(len(g['indexes']) for g in optimization_groups.values() if g['enabled'])
             current_idx = 0
@@ -83,7 +81,7 @@ def run_optimization_in_thread(db_name, force_reindex, user_id):
                     for table, index_name, definition in data['indexes']:
                         current_idx += 1
                         try:
-                            # Asegurar índice
+                            # CREATE INDEX CONCURRENTLY
                             query = f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {index_name} ON {table} {definition};"
                             cr.execute(query)
                             
@@ -92,14 +90,13 @@ def run_optimization_in_thread(db_name, force_reindex, user_id):
                                 start_time = time.time()
                                 cr.execute(f"REINDEX INDEX CONCURRENTLY {index_name};")
                                 duration = round(time.time() - start_time, 2)
-                                log_model.add_log(f"✅ {index_name} listo ({duration}s)", 'success')
+                                log_model.add_log(f"✅ {index_name} finalizado en {duration}s", 'success')
                             else:
                                 log_model.add_log(f"✓ {index_name} verificado", 'info')
 
                         except Exception as e:
                             log_model.add_log(f"❌ Error en {index_name}: {str(e)}", 'error')
                 else:
-                    # Borrar si está desactivado
                     for table, index_name, definition in data['indexes']:
                         try:
                             cr.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {index_name};")
@@ -111,7 +108,6 @@ def run_optimization_in_thread(db_name, force_reindex, user_id):
         except Exception as global_e:
             _logger.error(f"Error crítico en hilo de optimización: {global_e}")
         finally:
-            # Asegurarse de quitar el autocommit antes de cerrar por si acaso
             try:
                 cr._obj.connection.autocommit = False
             except:
@@ -123,7 +119,7 @@ class DbOptimization(models.Model):
 
     @api.model
     def _db_optimization_maintenance(self, force_reindex=False):
-        """Lanza el hilo de optimización para no bloquear la UI y permitir CONCURRENTLY"""
+        """Lanza el hilo de optimización"""
         thread = threading.Thread(target=run_optimization_in_thread, args=(self.env.cr.dbname, force_reindex, self.env.uid))
         thread.start()
         return True
@@ -143,5 +139,6 @@ class DbOptimizationLog(models.Model):
     
     @api.model
     def add_log(self, message, log_type='info'):
-        # Al estar en autocommit, el create se guarda inmediatamente
         self.create({'message': message, 'type': log_type})
+        # Aseguramos que se guarde incluso en hilos con autocommit manual
+        self.env.cr.commit()

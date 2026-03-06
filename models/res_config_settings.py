@@ -1,4 +1,5 @@
 from odoo import fields, models, api
+from datetime import datetime
 
 class ResConfigSettings(models.TransientModel):
     _inherit = 'res.config.settings'
@@ -47,18 +48,33 @@ class ResConfigSettings(models.TransientModel):
     cron_lastcall = fields.Datetime(related='optimization_cron_id.lastcall', readonly=True)
     cron_active = fields.Boolean(related='optimization_cron_id.active', readonly=False)
 
-    # Logs for Status Monitor
-    optimization_log_ids = fields.Many2many(
-        'db.optimization.log', 
-        string="Logs de Optimización",
-        compute='_compute_log_ids'
+    # HTML Terminal for better UI reliability
+    optimization_terminal = fields.Html(
+        string="Terminal de Optimización",
+        compute='_compute_optimization_terminal',
+        sanitize=False
     )
 
-    def _compute_log_ids(self):
-        # Seleccionamos los últimos 50 logs directamente
-        logs = self.env['db.optimization.log'].search([], limit=50, order='id desc')
+    def _compute_optimization_terminal(self):
+        logs = self.env['db.optimization.log'].search([], limit=20, order='id desc')
+        html_content = '<div style="font-family: monospace; font-size: 11px; line-height: 1.4;">'
+        if not logs:
+            html_content += '<div style="color: #666; text-align: center; margin-top: 50px;">--- No hay logs recientes ---</div>'
+        else:
+            for log in logs:
+                color = "#fff"
+                if log.type == 'success': color = "#28a745"
+                elif log.type == 'error': color = "#dc3545"
+                elif log.type == 'warning': color = "#ffc107"
+                elif log.type == 'info': color = "#17a2b8"
+                
+                time_str = log.create_date.strftime('%H:%M:%S') if log.create_date else '--:--:--'
+                # Escapar mensajes o asegurar que no rompan el HTML
+                msg = log.message.replace('\n', '<br/>')
+                html_content += f'<div style="margin-bottom: 4px;"><span style="color: #888;">[{time_str}]</span> <span style="color: {color};">{msg}</span></div>'
+        html_content += '</div>'
         for record in self:
-            record.optimization_log_ids = [(6, 0, logs.ids)]
+            record.optimization_terminal = html_content
 
     @api.depends('company_id')
     def _compute_optimization_cron_id(self):
@@ -69,38 +85,30 @@ class ResConfigSettings(models.TransientModel):
             record.optimization_cron_id = cron
 
     def action_apply_db_optimizations(self):
-        """Ejecución en segundo plano"""
         self.env['db.optimization']._db_optimization_maintenance()
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
             'params': {
-                'title': 'Proceso Iniciado',
-                'message': 'La optimización se está ejecutando en segundo plano. Pulsa "Actualizar Monitor" para ver el progreso.',
+                'title': 'Comando Enviado',
+                'message': 'Optimización lanzada. Dale a refrescar en el monitor.',
                 'type': 'info',
-                'sticky': False,
             }
         }
 
     def action_reindex_db_tables(self):
-        """Ejecución en segundo plano de reindexado"""
         self.env['db.optimization']._db_optimization_maintenance(force_reindex=True)
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
             'params': {
                 'title': 'Reindexado Iniciado',
-                'message': 'La reconstrucción de índices ha comenzado en segundo plano (operación lenta). Pulsa "Actualizar Monitor" constantemente.',
+                'message': 'Operación pesada en curso. Vigila el monitor.',
                 'type': 'warning',
-                'sticky': False,
             }
         }
 
     def action_refresh_optimization_logs(self):
-        """Refresca los logs en la vista"""
-        self._compute_log_ids()
-        # Retornar True suele ser suficiente si el campo es Many2many y se cambia en vals, 
-        # pero retornamos un reload para mayor seguridad en res.config.settings.
         return {
             'type': 'ir.actions.client',
             'tag': 'reload',
