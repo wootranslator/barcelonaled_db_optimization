@@ -57,11 +57,29 @@ class ResConfigSettings(models.TransientModel):
             record.optimization_cron_id = cron
 
     def action_apply_db_optimizations(self):
-        """Ejecución manual para aplicar los índices seleccionados"""
+        """Ejecución manual para aplicar los índices seleccionados con mensaje de confirmación"""
         self.env['db.optimization']._db_optimization_maintenance()
-        return True
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Optimización Completada',
+                'message': 'Se han procesado los índices correctamente.',
+                'type': 'success',
+                'sticky': False,
+            }
+        }
 
     def action_reindex_db_tables(self):
-        """Ejecución manual de REINDEX CONCURRENTLY en las tablas afectadas"""
+        """Ejecución manual de REINDEX CONCURRENTLY en las tablas afectadas con mensaje de confirmación"""
         self.env['db.optimization']._db_optimization_maintenance(force_reindex=True)
-        return True
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Reindexado Finalizado',
+                'message': 'La reconstrucción de índices ha finalizado con éxito.',
+                'type': 'success',
+                'sticky': True,
+            }
+        }
