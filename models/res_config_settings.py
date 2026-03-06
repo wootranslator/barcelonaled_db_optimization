@@ -47,7 +47,7 @@ class ResConfigSettings(models.TransientModel):
     cron_lastcall = fields.Datetime(related='optimization_cron_id.lastcall', readonly=True)
     cron_active = fields.Boolean(related='optimization_cron_id.active', readonly=False)
 
-    # Logs for Terminal UI
+    # Logs for Status Monitor
     optimization_log_ids = fields.Many2many(
         'db.optimization.log', 
         string="Logs de Optimización",
@@ -55,10 +55,10 @@ class ResConfigSettings(models.TransientModel):
     )
 
     def _compute_log_ids(self):
-        # Buscamos los últimos 50 logs para dar más contexto
+        # Seleccionamos los últimos 50 logs directamente
         logs = self.env['db.optimization.log'].search([], limit=50, order='id desc')
         for record in self:
-            record.optimization_log_ids = logs
+            record.optimization_log_ids = [(6, 0, logs.ids)]
 
     @api.depends('company_id')
     def _compute_optimization_cron_id(self):
@@ -90,12 +90,18 @@ class ResConfigSettings(models.TransientModel):
             'tag': 'display_notification',
             'params': {
                 'title': 'Reindexado Iniciado',
-                'message': 'La reconstrucción de índices ha comenzado en segundo plano (operación lenta).',
+                'message': 'La reconstrucción de índices ha comenzado en segundo plano (operación lenta). Pulsa "Actualizar Monitor" constantemente.',
                 'type': 'warning',
                 'sticky': False,
             }
         }
 
     def action_refresh_optimization_logs(self):
-        """Simplemente refresca la vista para ver los nuevos logs"""
-        return True
+        """Refresca los logs en la vista"""
+        self._compute_log_ids()
+        # Retornar True suele ser suficiente si el campo es Many2many y se cambia en vals, 
+        # pero retornamos un reload para mayor seguridad en res.config.settings.
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'reload',
+        }
