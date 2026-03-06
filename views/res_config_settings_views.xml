@@ -9,16 +9,16 @@
             <xpath expr="//block[@name='companies_setting_container']" position="after">
                 <block title="Optimización Base de Datos (Technical)" name="db_optimization_setting_container" groups="base.group_system">
                     
-                    <!-- Opción Global de Persistencia -->
-                    <setting string="Configuración Global" help="Define si los índices creados por este módulo deben permanecer en la base de datos PostgreSQL de forma permanente, incluso si el módulo es desinstalado en el futuro. Útil para entornos de producción donde no quieres arriesgarte a perder rendimiento.">
+                    <!-- Configuración Global -->
+                    <setting string="Configuración Global" help="Define si los índices creados por este módulo deben permanecer en la base de datos PostgreSQL de forma permanente.">
                         <field name="keep_indices_on_uninstall"/>
-                        <span class="o_form_label">Mantener índices en PostgreSQL tras desinstalar el módulo</span>
+                        <span class="o_form_label">Mantener índices tras desinstalar el módulo</span>
                     </setting>
 
                     <hr class="mt32 mb16" style="border-top: 1px dashed #dee2e6;"/>
 
                     <!-- Planificación (Cron) -->
-                    <setting string="Planificación Automática" help="Configura la tarea automática que revisa que todos los índices de optimización existan y estén en buen estado. Se recomienda una ejecución semanal en horas de baja carga.">
+                    <setting string="Planificación Automática" help="Tarea semanal preventiva.">
                         <div class="row mt16">
                             <span class="col-lg-3 o_form_label">Activar Cron</span>
                             <div class="col-lg-9">
@@ -26,57 +26,58 @@
                             </div>
                         </div>
                         <div class="row mt8" invisible="not cron_active">
-                            <span class="col-lg-3 o_form_label">Frecuencia</span>
-                            <div class="col-lg-9 text-muted italic">
-                                <span>Intervalo en el cual se ejecutará el mantenimiento preventivo.</span>
-                            </div>
-                            <label for="cron_interval_number" string="Cada" class="col-lg-3 o_light_label ps-4"/>
-                            <div class="col-lg-9 mt-2">
+                            <label for="cron_interval_number" string="Frecuencia" class="col-lg-3 o_light_label ps-4"/>
+                            <div class="col-lg-9">
                                 <field name="cron_interval_number" class="oe_inline"/>
                                 <field name="cron_interval_type" class="oe_inline ms-2"/>
                             </div>
                         </div>
-                        <div class="row mt8" invisible="not cron_active">
-                            <span class="col-lg-3 o_form_label">Gestión de Tiempos</span>
-                            <div class="col-lg-9">
-                                <div class="mt-2">
-                                    <span class="text-muted">Próxima: </span><field name="cron_nextcall" class="oe_inline"/>
-                                </div>
-                                <div class="mt-1">
-                                    <span class="text-muted">Última: </span><field name="cron_lastcall" class="oe_inline" readonly="1"/>
-                                </div>
+                    </setting>
+
+                    <!-- Terminal de Logs (Novedad) -->
+                    <setting string="Monitor de Estado (Tiempo Real)" help="Visualiza el progreso de las tareas de indexado.">
+                        <div class="mt-3 p-3 bg-dark text-white rounded font-monospace" style="min-height: 200px; max-height: 300px; overflow-y: auto; font-size: 11px; border: 2px solid #333;">
+                            <field name="optimization_log_ids" nolabel="1" readonly="1">
+                                <list no_open="1" create="0" delete="0" edit="0" decoration-success="type == 'success'" decoration-info="type == 'info'" decoration-danger="type == 'error'" decoration-warning="type == 'warning'">
+                                    <field name="create_date" string="Hora" widget="datetime" options="{'format': 'HH:mm:ss'}"/>
+                                    <field name="message" string="Mensaje"/>
+                                    <field name="type" column_invisible="True"/>
+                                </list>
+                            </field>
+                            <div class="mt-2 text-center text-muted small" invisible="optimization_log_ids">
+                                --- No hay logs recientes. Pulsa un botón para iniciar ---
                             </div>
                         </div>
                     </setting>
 
                     <!-- Botones de Acción -->
-                    <setting string="Acciones Inmediatas" help="Botones para ejecutar manualmente las tareas de optimización. 'Lanzar Mantenimiento' crea los índices que falten. 'Forzar Reindexado' reconstruye los índices existentes (operación lenta) para optimizar el almacenamiento en disco y la velocidad de acceso tras borrados masivos.">
+                    <setting string="Acciones Inmediatas" help="Lanzan las tareas que verás arriba en tiempo real.">
                         <div class="mt16">
                             <button name="action_apply_db_optimizations" string="Lanzar Mantenimiento" type="object" class="btn-primary me-2" icon="fa-play"/>
-                            <button name="action_reindex_db_tables" string="Forzar Reindexado (Pesado)" type="object" class="btn-secondary" icon="fa-refresh" confirm="Esta operación reconstruye los índices desde cero. Es una operación intensiva para el disco y la CPU. ¿Deseas continuar?"/>
+                            <button name="action_reindex_db_tables" string="Forzar Reindexado (Pesado)" type="object" class="btn-secondary" icon="fa-refresh" confirm="Esta operación reconstruye los índices. Consulta el terminal arriba para ver el progreso. ¿Deseas continuar?"/>
                         </div>
                     </setting>
 
                     <hr class="mt32 mb16" style="border-top: 1px solid #dee2e6; opacity: 0.5;"/>
 
-                    <!-- Selección de Aplicaciones a Optimizar (Toggles) -->
+                    <!-- Selección de Aplicaciones -->
                     <div class="row mt16">
                         <div class="col-12 col-lg-6">
-                            <setting string="Inventario" help="Añade índices a stock.picking (albaranes), stock.move (movimientos) y stock.valuation.layer. Resuelve la lentitud en la carga de listas de transferencias y el cálculo de stock disponible.">
+                            <setting string="Inventario" help="Mejora albaranes y stock.valuation.">
                                 <field name="opt_index_stock"/>
                             </setting>
-                            <setting string="Ventas / TPV" help="Optimiza búsquedas por origen en líneas de pedido y acelera la relación entre el Punto de Venta y los pedidos de venta.">
+                            <setting string="Ventas / TPV" help="Mejora pedidos y POS.">
                                 <field name="opt_index_sale"/>
                             </setting>
-                            <setting string="Contabilidad" help="Optimiza el motor de documentos EDI y el filtrado por estado en facturas (account.move). Crucial si gestionas un volumen alto de facturas electrónicas.">
+                            <setting string="Contabilidad" help="Optimiza motor EDI y facturas.">
                                 <field name="opt_index_accounting"/>
                             </setting>
                         </div>
                         <div class="col-12 col-lg-6">
-                            <setting string="Contactos" help="Añade índices compuestos para los rangos de cliente y proveedor. Mejora drásticamente la velocidad al buscar contactos o abrir el autocompletado en pedidos si tienes más de 100,000 registros en res.partner.">
+                            <setting string="Contactos" help="Mejora búsquedas en Partner.">
                                 <field name="opt_index_contact"/>
                             </setting>
-                            <setting string="Técnico / Core" help="Mejora el rendimiento del Chatter (reacciones de mensajes) y las consultas al log de Odoo (ir.logging). También acelera la resolución de dependencias entre módulos.">
+                            <setting string="Técnico / Core" help="Mejora Chatter y Logs.">
                                 <field name="opt_index_technical"/>
                             </setting>
                         </div>
