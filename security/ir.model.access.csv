@@ -1,2 +1,3 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_db_optimization_admin,db.optimization.admin,model_db_optimization,base.group_system,1,1,1,1
+access_db_optimization_log_admin,db.optimization.log.admin,model_db_optimization_log,base.group_system,1,1,1,1
